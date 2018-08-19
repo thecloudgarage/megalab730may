@@ -1,0 +1,61 @@
+sudo su
+sudo yum install httpd php php-mysql php-pecl-memcached aws-kinesis-agent stress amazon-efs-utils -y
+sudo service httpd start
+sudo chkconfig httpd on
+sudo sed -i -- 's/AllowOverride None/AllowOverride All/g' /etc/httpd/conf/httpd.conf
+sudo service httpd restart
+sudo chkconfig httpd on
+cd /home/ec2-user
+sudo wget https://wordpress.org/latest.tar.gz
+sudo tar -xvf latest.tar.gz
+cd /var/www/html
+sudo touch albhealthcheck.html
+sudo mkdir blogs
+cd /home/ec2-user
+sudo mv wordpress/* /var/www/html/blogs
+cd /var/www/html/blogs/wp-content
+sudo mkdir uploads
+vi /etc/fstab
+
+###Once fstab opens up, press Esc + I to insert. Scroll down and enter the below as the last new line in fstab file. 
+###Kindly replace XXXX with your EFS numerical ID created for megalab in North Virginia
+###If mount -a fails after the fstab., you might need to check the tab separation in the entry. Mostly, there should not be an issue
+
+fs-XXXX.efs.us-east-1.amazonaws.com:/ /var/www/html/blogs/wp-content/uploads/ nfs4  nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,_netdev,noresvport 0 0
+
+####Once fstab is saved, then...
+
+mount -a
+cd /var/www/html/blogs
+sudo wget https://s3.amazonaws.com/labs.thecloudgarage.com/megalab/wp-config.php
+
+####Please change XXXXXXXXXXXXXXXXXXXXXXX with RDS North Virginia Master DNS endpoint
+####Please change YYYYYYYYYYYYYYYYYYYYYY with RDS North Virginia Read Replica DNS endpoint
+
+sudo sed -i -- 's/northvirginia_rds_master_slave/XXXXXXXXXXXXXXXXXXXXXXX/g' wp-config.php
+sudo sed -i -- 's/northvirginia_rds_readreplica/YYYYYYYYYYYYYYYYYYYYYY/g' wp-config.php
+
+sudo wget http://downloads.wordpress.org/plugin/hyperdb.zip
+sudo unzip hyperdb.zip
+sudo cp /var/www/html/blogs/hyperdb/db.php /var/www/html/blogs/wp-content/
+sudo chmod a-w /var/www/html/blogs/wp-content/db.php
+cd /var/www/html/blogs
+sudo wget https://s3.amazonaws.com/labs.thecloudgarage.com/megalab/db-config.php
+sudo service httpd restart
+cd /home/ec2-user
+sudo wget https://downloads.wordpress.org/plugin/w3-total-cache.0.9.6.zip
+sudo unzip w3-total-cache.0.9.6.zip
+sudo mv /home/ec2-user/w3-total-cache /var/www/html/blogs/wp-content/plugins
+sudo chmod -R 766 /var/www/html
+sudo chown -R apache.apache /var/www/html
+
+####The below commands need to be run to setup the Kinesis agent and send apache weblogs to Kinesis Data stream
+
+cd /etc/aws-kinesis
+sudo rm -rf agent.json
+sudo wget https://s3.amazonaws.com/labs.thecloudgarage.com/Kinesis+streams/agent.json
+sudo chmod -R 755 /var/log/httpd/
+sudo chown -R aws-kinesis-agent-user /var/log/httpd
+sudo service aws-kinesis-agent start
+sudo chkconfig aws-kinesis-agent on
+sudo service httpd restart
